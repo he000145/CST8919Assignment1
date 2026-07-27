@@ -1,10 +1,25 @@
 @baseUrl = http://localhost:5000
 
-### Home page
+### Public home page
 GET {{baseUrl}}/
 
 ### Start Auth0 login
 GET {{baseUrl}}/login
 
 ### Unauthorized protected access
+# Run this request while logged out.
+# It should return a redirect to /login.
 GET {{baseUrl}}/protected
+
+### Authenticated protected access
+# Complete Auth0 login in the browser first.
+# Open browser developer tools:
+# Application > Cookies > http://localhost:5000
+# Temporarily copy the value of the "session" cookie below.
+#
+# Never commit a real session cookie to GitHub.
+
+@sessionCookie = replace-with-temporary-session-cookie
+
+GET {{baseUrl}}/protected
+Cookie: session={{sessionCookie}}
