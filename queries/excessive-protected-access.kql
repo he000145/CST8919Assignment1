@@ -1,0 +1,12 @@
+AppServiceConsoleLogs
+| where TimeGenerated > ago(15m)
+| where ResultDescription has "PROTECTED_ACCESS"
+| extend user_id = extract(@"user_id=([^\s]+)", 1, ResultDescription)
+| where isnotempty(user_id)
+| summarize
+    access_count = count(),
+    timestamp = max(TimeGenerated)
+    by user_id
+| where access_count > 10
+| project user_id, timestamp, access_count
+| order by access_count desc

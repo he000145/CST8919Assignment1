@@ -1,0 +1,10 @@
+@baseUrl = http://localhost:5000
+
+### Home page
+GET {{baseUrl}}/
+
+### Start Auth0 login
+GET {{baseUrl}}/login
+
+### Unauthorized protected access
+GET {{baseUrl}}/protected
