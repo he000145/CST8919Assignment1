@@ -1,97 +1,235 @@
-# CST8919 Lab 1 - Flask Authentication with Auth0
+# CST8919 Assignment 1: Securing and Monitoring an Authenticated Flask App
 
-## Overview
+## Demo Video
 
-This project is integrated Auth0 authentication into a Flask web application. Users can securely log in and log out using Auth0, and authenticated users can access a protected page.
+**YouTube Demo:**  
+[demo](https://youtu.be/zb64egvALXk)
 
-## Features
+## Project Structure
 
-* User Login with Auth0
-* User Logout with Auth0
-* User Profile Page
-* Protected Route (`/protected`)
-* Redirect unauthenticated users to the login page
-
-## Technologies Used
-
-* Python
-* Flask
-* Auth0
-* HTML/CSS
-
-## Auth0 Configuration
-
-Create a Regular Web Application in Auth0 and configure the following URLs:
-
-### Allowed Callback URLs
-
-http://localhost:5000/callback
-
-### Allowed Logout URLs
-
-http://localhost:5000
-
-### Allowed Web Origins
-
-http://localhost:5000
-
-## Environment Variables
-
-Create a `.env` file in the project root directory:
-
-```env
-# Auth0 Configuration
-AUTH0_DOMAIN=YOUR_AUTH0_DOMAIN
-AUTH0_CLIENT_ID=YOUR_CLIENT_ID
-AUTH0_CLIENT_SECRET=YOUR_CLIENT_SECRET
-AUTH0_SECRET=YOUR_GENERATED_SECRET
-AUTH0_REDIRECT_URI=http://localhost:5000/callback
+```text
+.
+├── app.py
+├── requirements.txt
+├── .env.example
+├── .gitignore
+├── test-app.http
+├── README.md
+├── queries/
+│   └── excessive-protected-access.kql
+├── templates/
+│   ├── index.html
+│   ├── profile.html
+│   └── protected.html
+└── static/
+    └── style.css
 ```
 
-## Installation
+## Local Setup
 
-Create and activate a virtual environment:
+### 1. Clone the repository
 
 ```bash
-python -m venv venv
+git clone https://github.com/he000145/CST8919Assignment1.git
+cd CST8919Assignment1
 ```
 
-Windows:
+### 2. Create a virtual environment
 
 ```bash
-venv\Scripts\activate
+python -m venv .venv
 ```
 
-Install dependencies:
+Activate it on Windows:
+
+```powershell
+.\.venv\Scripts\activate
+```
+
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Run the Application
+## Auth0 Configuration
+
+Create a **Regular Web Application** in Auth0.
+
+For local testing, configure:
+
+```text
+Allowed Callback URLs: http://localhost:5000/callback
+Allowed Logout URLs: http://localhost:5000
+Allowed Web Origins: http://localhost:5000
+```
+
+For Azure deployment, also add:
+
+```text
+https://<your-app-name>.azurewebsites.net/callback
+https://<your-app-name>.azurewebsites.net
+```
+
+## Environment Variables
+
+Copy `.env.example` to `.env`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Add the real Auth0 values:
+
+```env
+AUTH0_DOMAIN=your-auth0-domain.us.auth0.com
+AUTH0_CLIENT_ID=your-client-id
+AUTH0_CLIENT_SECRET=your-client-secret
+AUTH0_SECRET=your-generated-secret
+AUTH0_REDIRECT_URI=http://localhost:5000/callback
+AUTH0_LOGOUT_RETURN_TO=http://localhost:5000
+APP_ENV=development
+```
+
+Generate `AUTH0_SECRET` with:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(64))"
+```
+
+The `.env` file is excluded from Git and must not be uploaded.
+
+## Run the Application Locally
 
 ```bash
 python app.py
 ```
 
-The application will be available at:
+Open:
 
 ```text
 http://localhost:5000
 ```
 
-## Protected Route
-
-The application includes a protected page:
+Protected route:
 
 ```text
 http://localhost:5000/protected
 ```
 
-Authenticated users can access the page. Unauthenticated users will be redirected to the login page.
+Authenticated users can access this page. Unauthenticated users are redirected to Auth0.
 
-## Demo Video
+## Azure Deployment
 
-YouTube Link:
+The application was deployed to Azure App Service using GitHub Actions.
 
-[[Lab Youtube Link](https://youtu.be/kS2AiAfKSmU)]
+The Azure environment includes:
+
+- Azure App Service
+- App Service Plan
+- Log Analytics Workspace
+- Azure Monitor Alert Rule
+- Action Group with email notification
+
+Production environment variables:
+
+```env
+AUTH0_DOMAIN=xxxx.us.auth0.com
+AUTH0_CLIENT_ID=Jpixxxx
+AUTH0_CLIENT_SECRET=mQvDnOxxxx
+AUTH0_SECRET=d0606xxxxx
+AUTH0_REDIRECT_URI=http://localhost:5000/callback
+AUTH0_LOGOUT_RETURN_TO=http://localhost:5000
+APP_ENV=development
+```
+
+Application logging was enabled in App Service, and a Diagnostic Setting sends `AppServiceConsoleLogs` and `AppServiceHTTPLogs` to the Log Analytics Workspace.
+
+## Structured Logging
+
+### Successful Login
+
+```text
+LOGIN_SUCCESS user_id=<user-id> email=<email> ip=<ip-address> timestamp=<timestamp>
+```
+
+### Protected Route Access
+
+```text
+PROTECTED_ACCESS user_id=<user-id> email=<email> route=/protected ip=<ip-address> timestamp=<timestamp>
+```
+
+### Unauthorized Access
+
+```text
+UNAUTHORIZED_ACCESS route=/protected ip=<ip-address> timestamp=<timestamp>
+```
+
+### Logout
+
+```text
+LOGOUT user_id=<user-id> email=<email> ip=<ip-address> timestamp=<timestamp>
+```
+
+These logs make user activity easier to search and analyze in Log Analytics.
+
+## KQL Detection Query
+
+```kusto
+AppServiceConsoleLogs
+| where TimeGenerated > ago(15m)
+| where ResultDescription has "PROTECTED_ACCESS"
+| extend user_id = extract(@"user_id=([^\s]+)", 1, ResultDescription)
+| where isnotempty(user_id)
+| summarize
+    access_count = count(),
+    timestamp = max(TimeGenerated)
+    by user_id
+| where access_count > 10
+| project user_id, timestamp, access_count
+| order by access_count desc
+```
+
+### Query Logic
+
+The query:
+
+1. Searches logs from the past 15 minutes.
+2. Filters for `PROTECTED_ACCESS`.
+3. Extracts the Auth0 user ID.
+4. Groups results by user.
+5. Counts accesses.
+6. Returns users with more than 10 accesses.
+
+## Azure Alert Logic
+
+```text
+Signal: Custom log search
+Query type: Aggregated logs
+Measure: Table rows
+Aggregation type: Count
+Aggregation granularity: 15 minutes
+Operator: Greater than
+Threshold value: 0
+Severity: 3
+Action Group: ag-cst8919-assignment1
+```
+
+The KQL query already filters for users with more than 10 accesses, so the alert fires when the query returns more than zero rows.
+
+## Testing with `test-app.http`
+
+The file includes requests for:
+
+- Public home page
+- Auth0 login redirect
+- Unauthorized `/protected` access
+- Authenticated `/protected` access with a temporary session cookie
+
+Never commit a real cookie. Keep:
+
+```http
+@sessionCookie = replace-with-temporary-session-cookie
+```
+
+Because Auth0 uses an interactive browser login, valid traffic can also be generated by logging in through the browser and refreshing `/protected`.
